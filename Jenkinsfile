@@ -3,62 +3,55 @@ pipeline {
     environment {
         IMAGE_NAME = "semra06/my-docker-image"
     }
+
     stages {
-        stage('Code Checkout') {
+        stage('code checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/semra06/ABC_project1.git'
             }
         }
-        stage('Code Compile') {
+
+        stage('code compile') {
             steps {
                 sh 'mvn clean compile'
             }
         }
-        stage('Code Test') {
+
+        stage('code test') {
             steps {
                 sh 'mvn test'
             }
         }
-        stage('Code Package') {
+
+        stage('code build') {
             steps {
                 sh 'mvn package'
             }
         }
-        stage('Check Directory') {
+
+        stage('docker image build') {
             steps {
-                sh 'pwd'
-                sh 'ls -l'
+                sh 'cp target/ABCtechnologies-1.0.war .'
+                sh "docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
             }
         }
-        stage('Build Docker Image') {
+
+        stage('docker image push') {
             steps {
-                sh 'cp target/ABCtechnologies-1.0.war .'  
-                sh "docker build -t ${IMAGE_NAME}:${env.BUILD_NUMBER} ."  
-            }
-        }
-        stage('Push Docker Image') {
-            steps {
-                withDockerRegistry([credentialsId: 'docker-registry-credentials', url: '']) {
-                    sh "docker tag ${IMAGE_NAME}:${env.BUILD_NUMBER} ${IMAGE_NAME}:latest"
-                    sh "docker push ${IMAGE_NAME}:${env.BUILD_NUMBER}"
-                    sh "docker push ${IMAGE_NAME}:latest"
+                withDockerRegistry([credentialsId:'docker-registry-credentials', url:""]) {
+                    sh "docker push ${IMAGE_NAME}:${BUILD_NUMBER}"
                 }
             }
         }
-        stage('Clean Up Old Containers') {
+
+        stage('application deployment') {
             steps {
                 sh """
-                    # Eski konteynerleri durdur ve sil
-                    docker ps -q --filter "name=my-tomcat-*" | xargs -r docker stop | xargs -r docker rm
+                    export IMAGE_NAME=${IMAGE_NAME}
+                    export BUILD_NUMBER=${BUILD_NUMBER}
+                    envsubst < abcdeploy.yaml | kubectl apply -f -
                 """
-            }
-        }
-        stage('Deployment') {
-            steps {
-                sh """
-                    # Yeni konteyneri başlat
-                    docker run -itd -p 8282:8080 --name my-tomcat-${env.BUILD_NUMBER} semra06/my-docker-image:${env.BUILD_NUMBER}
-                """
+                sh "kubectl apply -f abcservice.yaml"
             }
         }
     }
